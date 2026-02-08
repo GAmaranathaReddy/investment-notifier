@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investment Alert - 2026-02-08 01:42</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+        }
+        h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            color: #4fc3f7;
+        }
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 15px;
+        }
+        .stat {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        .stat.entry { background: rgba(76, 175, 80, 0.3); color: #81c784; }
+        .stat.exit { background: rgba(244, 67, 54, 0.3); color: #e57373; }
+        .stat.total { background: rgba(33, 150, 243, 0.3); color: #64b5f6; }
+
+        .table-container {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .table-scroll {
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 70vh;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            white-space: nowrap;
+        }
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        th {
+            background: #1e3a5f;
+            color: #4fc3f7;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 2px solid #4fc3f7;
+        }
+        th:hover {
+            background: #2a4a6f;
+        }
+        th::after {
+            content: ' ↕';
+            opacity: 0.3;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        tr:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .symbol {
+            font-weight: bold;
+            color: #fff;
+        }
+        .price, .high {
+            font-family: 'Monaco', 'Consolas', monospace;
+            text-align: right;
+        }
+        .drop {
+            font-family: 'Monaco', 'Consolas', monospace;
+            text-align: right;
+        }
+
+        /* Status row colors */
+        tr.entry { background: rgba(76, 175, 80, 0.15); }
+        tr.healthy { background: rgba(33, 150, 243, 0.1); }
+        tr.watch { background: rgba(255, 193, 7, 0.1); }
+        tr.wait { background: rgba(158, 158, 158, 0.1); }
+        tr.exit { background: rgba(244, 67, 54, 0.15); }
+
+        .legend {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            th, td { padding: 8px 6px; font-size: 0.85em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📈 Investment Alert System</h1>
+            <p>Generated: 2026-02-08 01:42</p>
+            <div class="stats">
+                <div class="stat entry">🟢 1 Entry Opportunities</div>
+                <div class="stat exit">🚨 7 Exit Risks</div>
+                <div class="stat total">📊 15 Total Symbols</div>
+            </div>
+        </header>
+
+        <div class="table-container">
+            <div class="table-scroll">
+                <table id="stockTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)">Symbol</th>
+                            <th onclick="sortTable(1)">Status</th>
+                            <th onclick="sortTable(2)">Price</th>
+                            <th onclick="sortTable(3)">1D Drop</th>
+                            <th onclick="sortTable(4)">1W Drop</th>
+                            <th onclick="sortTable(5)">1M Drop</th>
+                            <th onclick="sortTable(6)">3M Drop</th>
+                            <th onclick="sortTable(7)">1D High</th>
+                            <th onclick="sortTable(8)">1W High</th>
+                            <th onclick="sortTable(9)">1M High</th>
+                            <th onclick="sortTable(10)">3M High</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+        <tr class="healthy">
+            <td class="symbol">AAPL</td>
+            <td class="status">✅ HEALTHY</td>
+            <td class="price">$278.12</td>
+            <td class="drop">1.0%</td>
+            <td class="drop">1.0%</td>
+            <td class="drop">1.0%</td>
+            <td class="drop">3.6%</td>
+            <td class="high">$280.91</td>
+            <td class="high">$280.91</td>
+            <td class="high">$280.91</td>
+            <td class="high">$288.62</td>
+        </tr>
+        <tr class="healthy">
+            <td class="symbol">GOOGL</td>
+            <td class="status">✅ HEALTHY</td>
+            <td class="price">$322.86</td>
+            <td class="drop">2.3%</td>
+            <td class="drop">7.5%</td>
+            <td class="drop">7.5%</td>
+            <td class="drop">7.5%</td>
+            <td class="high">$330.38</td>
+            <td class="high">$349.00</td>
+            <td class="high">$349.00</td>
+            <td class="high">$349.00</td>
+        </tr>
+        <tr class="healthy">
+            <td class="symbol">BRK-B</td>
+            <td class="status">✅ HEALTHY</td>
+            <td class="price">$508.09</td>
+            <td class="drop">0.3%</td>
+            <td class="drop">0.8%</td>
+            <td class="drop">0.8%</td>
+            <td class="drop">1.7%</td>
+            <td class="high">$509.66</td>
+            <td class="high">$512.13</td>
+            <td class="high">$512.13</td>
+            <td class="high">$516.85</td>
+        </tr>
+        <tr class="healthy">
+            <td class="symbol">JPM</td>
+            <td class="status">✅ HEALTHY</td>
+            <td class="price">$322.40</td>
+            <td class="drop">0.6%</td>
+            <td class="drop">0.6%</td>
+            <td class="drop">2.9%</td>
+            <td class="drop">4.0%</td>
+            <td class="high">$324.25</td>
+            <td class="high">$324.25</td>
+            <td class="high">$331.90</td>
+            <td class="high">$335.87</td>
+        </tr>
+        <tr class="healthy">
+            <td class="symbol">SI=F</td>
+            <td class="status">✅ HEALTHY</td>
+            <td class="price">$76.74</td>
+            <td class="drop">0.8%</td>
+            <td class="drop">15.7%</td>
+            <td class="drop">36.7%</td>
+            <td class="drop">36.7%</td>
+            <td class="high">$77.32</td>
+            <td class="high">$90.97</td>
+            <td class="high">$121.30</td>
+            <td class="high">$121.30</td>
+        </tr>
+        <tr class="healthy">
+            <td class="symbol">GC=F</td>
+            <td class="status">✅ HEALTHY</td>
+            <td class="price">$4951.20</td>
+            <td class="drop">0.1%</td>
+            <td class="drop">2.6%</td>
+            <td class="drop">11.4%</td>
+            <td class="drop">11.4%</td>
+            <td class="high">$4958.50</td>
+            <td class="high">$5082.20</td>
+            <td class="high">$5586.20</td>
+            <td class="high">$5586.20</td>
+        </tr>
+        <tr class="healthy">
+            <td class="symbol">SPY</td>
+            <td class="status">✅ HEALTHY</td>
+            <td class="price">$690.62</td>
+            <td class="drop">0.2%</td>
+            <td class="drop">0.9%</td>
+            <td class="drop">1.0%</td>
+            <td class="drop">1.0%</td>
+            <td class="high">$692.31</td>
+            <td class="high">$696.96</td>
+            <td class="high">$697.84</td>
+            <td class="high">$697.84</td>
+        </tr>
+        <tr class="healthy">
+            <td class="symbol">VTI</td>
+            <td class="status">✅ HEALTHY</td>
+            <td class="price">$340.96</td>
+            <td class="drop">0.2%</td>
+            <td class="drop">0.7%</td>
+            <td class="drop">1.0%</td>
+            <td class="drop">1.0%</td>
+            <td class="high">$341.70</td>
+            <td class="high">$343.40</td>
+            <td class="high">$344.42</td>
+            <td class="high">$344.42</td>
+        </tr>
+        <tr class="wait">
+            <td class="symbol">AMZN</td>
+            <td class="status">⏸️ WAIT</td>
+            <td class="price">$210.32</td>
+            <td class="drop">0.5%</td>
+            <td class="drop">14.6%</td>
+            <td class="drop">15.5%</td>
+            <td class="drop">16.5%</td>
+            <td class="high">$211.44</td>
+            <td class="high">$246.35</td>
+            <td class="high">$248.94</td>
+            <td class="high">$251.75</td>
+        </tr>
+        <tr class="wait">
+            <td class="symbol">TSLA</td>
+            <td class="status">⏸️ WAIT</td>
+            <td class="price">$411.11</td>
+            <td class="drop">0.8%</td>
+            <td class="drop">4.1%</td>
+            <td class="drop">9.5%</td>
+            <td class="drop">17.6%</td>
+            <td class="high">$414.55</td>
+            <td class="high">$428.56</td>
+            <td class="high">$454.30</td>
+            <td class="high">$498.83</td>
+        </tr>
+        <tr class="wait">
+            <td class="symbol">QQQ</td>
+            <td class="status">⏸️ WAIT</td>
+            <td class="price">$609.65</td>
+            <td class="drop">0.3%</td>
+            <td class="drop">3.2%</td>
+            <td class="drop">4.2%</td>
+            <td class="drop">4.2%</td>
+            <td class="high">$611.41</td>
+            <td class="high">$629.98</td>
+            <td class="high">$636.60</td>
+            <td class="high">$636.60</td>
+        </tr>
+        <tr class="exit">
+            <td class="symbol">MSFT</td>
+            <td class="status">🚨 EXIT RISK</td>
+            <td class="price">$401.14</td>
+            <td class="drop">0.2%</td>
+            <td class="drop">6.9%</td>
+            <td class="drop">17.1%</td>
+            <td class="drop">21.7%</td>
+            <td class="high">$401.79</td>
+            <td class="high">$430.74</td>
+            <td class="high">$483.74</td>
+            <td class="high">$512.54</td>
+        </tr>
+        <tr class="exit">
+            <td class="symbol">NVDA</td>
+            <td class="status">🚨 EXIT RISK</td>
+            <td class="price">$185.41</td>
+            <td class="drop">0.9%</td>
+            <td class="drop">2.6%</td>
+            <td class="drop">4.7%</td>
+            <td class="drop">7.3%</td>
+            <td class="high">$187.00</td>
+            <td class="high">$190.30</td>
+            <td class="high">$194.49</td>
+            <td class="high">$199.93</td>
+        </tr>
+        <tr class="exit">
+            <td class="symbol">META</td>
+            <td class="status">🚨 EXIT RISK</td>
+            <td class="price">$661.46</td>
+            <td class="drop">1.6%</td>
+            <td class="drop">8.3%</td>
+            <td class="drop">11.1%</td>
+            <td class="drop">11.1%</td>
+            <td class="high">$671.99</td>
+            <td class="high">$721.30</td>
+            <td class="high">$744.00</td>
+            <td class="high">$744.00</td>
+        </tr>
+        <tr class="exit">
+            <td class="symbol">V</td>
+            <td class="status">🚨 EXIT RISK</td>
+            <td class="price">$331.58</td>
+            <td class="drop">1.1%</td>
+            <td class="drop">1.8%</td>
+            <td class="drop">7.0%</td>
+            <td class="drop">7.5%</td>
+            <td class="high">$335.13</td>
+            <td class="high">$337.59</td>
+            <td class="high">$356.35</td>
+            <td class="high">$358.62</td>
+        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">🟢 <strong>ENTRY OPP</strong> - Good pullback in uptrend</div>
+            <div class="legend-item">✅ <strong>HEALTHY</strong> - Strong uptrend, hold</div>
+            <div class="legend-item">👀 <strong>WATCH</strong> - Monitor closely</div>
+            <div class="legend-item">⏸️ <strong>WAIT</strong> - Not ready yet</div>
+            <div class="legend-item">🚨 <strong>EXIT RISK</strong> - Consider reducing</div>
+        </div>
+    </div>
+
+    <script>
+        let sortDirection = {};
+
+        function sortTable(columnIndex) {
+            const table = document.getElementById('stockTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            sortDirection[columnIndex] = !sortDirection[columnIndex];
+            const dir = sortDirection[columnIndex] ? 1 : -1;
+
+            rows.sort((a, b) => {
+                let aVal = a.cells[columnIndex].textContent.trim();
+                let bVal = b.cells[columnIndex].textContent.trim();
+
+                // Remove $ and % for numeric sorting
+                aVal = aVal.replace(/[$%,]/g, '');
+                bVal = bVal.replace(/[$%,]/g, '');
+
+                // Check if numeric
+                const aNum = parseFloat(aVal);
+                const bNum = parseFloat(bVal);
+
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return (aNum - bNum) * dir;
+                }
+                return aVal.localeCompare(bVal) * dir;
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+        }
+    </script>
+</body>
+</html>

@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """
-Long-Term Investor Alert System
-================================
+Long-Term Investor Alert System (Config-Driven)
+================================================
 A calm, disciplined alert system for long-term investors.
 Focuses on capital protection and low-risk entry opportunities.
+
+Supports multiple categories from config.json:
+- Core Trend: Broad market + major trend leaders
+- Emerging Rotation: Rotation-aware baskets (commodities, AI, etc.)
+- Stress Opportunities: High-quality banks to buy during panic
+- Defensive Protection: Capital protection instruments
+- Finance Confirmation: Macro health signals
 
 Usage:
     python investor_alert.py
@@ -17,12 +24,49 @@ import json
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import pandas as pd
-import requests
-import yfinance as yf
+
+from lib.config import (
+    load_config,
+    get_batch_size,
+    get_history_period,
+    get_state_dir,
+    get_monitor_symbols_file,
+    get_dedupe_window,
+    is_telegram_enabled,
+    get_category_symbols,
+    get_exit_thresholds,
+    get_entry_thresholds,
+    get_stress_opportunity_thresholds,
+    get_finance_confirmation_thresholds,
+    get_global_filters,
+)
+from lib.market_data import batch_download, get_close_series, get_high_series, has_minimum_history
+from lib.signals import (
+    get_ma_value,
+    compute_ma_slope,
+    compute_drawdown,
+    get_period_high,
+    get_multi_timeframe_highs,
+    check_stability,
+    is_above_ma,
+    is_ma_crossover_bearish,
+    is_ma_slope_rising,
+    is_overheated,
+    days_below_ma,
+    compute_relative_strength,
+)
+from lib.alerts import (
+    send_telegram,
+    should_send_alert,
+    record_alert_sent,
+    cleanup_old_alerts,
+    format_weekly_summary,
+    ensure_state_dir,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -34,31 +78,12 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# CONFIGURATION
-# ==============================================================================
-
-STOCKS_FILE = "stocks.json"
-PERIOD = "6mo"
-INTERVAL = "1d"
-
-# Risk thresholds
-DRAWDOWN_THRESHOLD = 0.10  # 10% drawdown triggers exit risk
-DMA_SHORT = 50  # Short-term moving average
-DMA_LONG = 100  # Long-term moving average
-
-# Entry thresholds
-PULLBACK_MIN = 0.05  # Minimum 5% pullback for entry
-PULLBACK_MAX = 0.10  # Maximum 10% pullback (beyond this is drawdown risk)
-STABILITY_DAYS = 5  # Number of days to check for stability
-
-
-# ==============================================================================
-# DATA FETCHING
+# SYMBOL LOADING
 # ==============================================================================
 
 
-def load_symbols(filepath: str = STOCKS_FILE) -> list[str]:
-    """Load stock symbols from JSON file."""
+def load_monitor_symbols(filepath: str) -> list[str]:
+    """Load stock symbols from JSON file (existing stocks.json format)."""
     try:
         with open(filepath, "r") as f:
             symbols = json.load(f)
@@ -72,125 +97,23 @@ def load_symbols(filepath: str = STOCKS_FILE) -> list[str]:
         return []
 
 
-def fetch_all_price_data(symbols: list[str]) -> dict[str, pd.DataFrame]:
-    """
-    Fetch daily price history for ALL symbols in ONE batch request.
-    This is much more efficient and avoids rate limiting.
-    """
-    try:
-        logger.info(f"Fetching data for {len(symbols)} symbols in one batch request...")
+def collect_all_symbols(config: dict, monitor_symbols: list[str]) -> list[str]:
+    """Collect all unique symbols needed for analysis."""
+    all_symbols = set(monitor_symbols)
 
-        # Download all symbols at once - single API call!
-        df = yf.download(
-            tickers=symbols,
-            period=PERIOD,
-            interval=INTERVAL,
-            group_by="ticker",
-            progress=False,
-            threads=True,
-        )
+    # Add category symbols
+    for category in ["core_trend", "stress_opportunities", "defensive_protection", "finance_confirmation"]:
+        all_symbols.update(get_category_symbols(config, category))
 
-        if df.empty:
-            logger.warning("No data returned from batch request")
-            return {}
+    # Add stress watch symbols
+    stress_thresholds = get_stress_opportunity_thresholds(config)
+    all_symbols.update(stress_thresholds.get("stress_watch_symbols", []))
 
-        # Parse the multi-level dataframe into individual symbol dataframes
-        result = {}
-        for symbol in symbols:
-            try:
-                if len(symbols) == 1:
-                    # Single symbol returns flat dataframe
-                    symbol_df = df.copy()
-                else:
-                    # Multiple symbols returns multi-level columns
-                    symbol_df = df[symbol].copy()
+    # Add finance confirmation compare symbol
+    finance_thresholds = get_finance_confirmation_thresholds(config)
+    all_symbols.add(finance_thresholds.get("compare_to", "SPY"))
 
-                # Drop rows with all NaN values
-                symbol_df = symbol_df.dropna(how="all")
-
-                if not symbol_df.empty:
-                    result[symbol] = symbol_df
-                    logger.info(f"  {symbol}: {len(symbol_df)} days of data")
-                else:
-                    logger.warning(f"  {symbol}: No data available")
-            except KeyError:
-                logger.warning(f"  {symbol}: Not found in response")
-            except Exception as e:
-                logger.error(f"  {symbol}: Error parsing data - {e}")
-
-        logger.info(f"Batch fetch complete: {len(result)}/{len(symbols)} symbols successful")
-        return result
-
-    except Exception as e:
-        logger.error(f"Error in batch fetch: {e}")
-        return {}
-
-
-# ==============================================================================
-# TECHNICAL CALCULATIONS
-# ==============================================================================
-
-
-def calculate_moving_averages(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate 50-DMA and 100-DMA."""
-    df = df.copy()
-    df["DMA_50"] = df["Close"].rolling(window=DMA_SHORT).mean()
-    df["DMA_100"] = df["Close"].rolling(window=DMA_LONG).mean()
-    return df
-
-
-def calculate_dma_slope(df: pd.DataFrame, window: int = 10) -> float:
-    """
-    Calculate the slope of the 100-DMA over the last N days.
-    Returns the average daily change as a percentage.
-    """
-    dma_100 = df["DMA_100"].dropna()
-    if len(dma_100) < window:
-        return 0.0
-
-    recent_dma = dma_100.tail(window)
-    slope = (recent_dma.iloc[-1] - recent_dma.iloc[0]) / recent_dma.iloc[0]
-    return slope
-
-
-def get_recent_high(df: pd.DataFrame, days: int = 63) -> float:
-    """Get the highest close in the last N days (default ~3 months)."""
-    recent_data = df.tail(days)
-    return recent_data["Close"].max()
-
-
-def get_multi_timeframe_highs(df: pd.DataFrame) -> dict:
-    """Get highest prices for multiple timeframes."""
-    return {
-        "high_1d": df["High"].iloc[-1] if len(df) >= 1 else 0,  # Today's intraday high
-        "high_1w": df["High"].tail(5).max() if len(df) >= 5 else 0,  # 1 week (5 trading days)
-        "high_1m": df["High"].tail(21).max() if len(df) >= 21 else 0,  # 1 month (21 trading days)
-        "high_3m": df["High"].tail(63).max() if len(df) >= 63 else 0,  # 3 months (63 trading days)
-    }
-
-
-def calculate_drawdown(current_price: float, recent_high: float) -> float:
-    """Calculate drawdown from recent high."""
-    if recent_high <= 0:
-        return 0.0
-    return (recent_high - current_price) / recent_high
-
-
-def check_price_stability(df: pd.DataFrame, days: int = STABILITY_DAYS) -> bool:
-    """
-    Check if recent closes are stable (no wild swings).
-    Returns True if daily changes are within reasonable bounds.
-    """
-    recent_closes = df["Close"].tail(days)
-    if len(recent_closes) < days:
-        return False
-
-    # Calculate daily percentage changes
-    daily_changes = recent_closes.pct_change().dropna().abs()
-
-    # Stable if no single day moved more than 3%
-    max_daily_change = daily_changes.max()
-    return max_daily_change < 0.03
+    return list(all_symbols)
 
 
 # ==============================================================================
@@ -198,59 +121,68 @@ def check_price_stability(df: pd.DataFrame, days: int = STABILITY_DAYS) -> bool:
 # ==============================================================================
 
 
-def check_exit_risk(df: pd.DataFrame, symbol: str) -> Optional[dict]:
+def check_exit_risk(
+    symbol: str,
+    close_series: pd.Series,
+    high_series: pd.Series,
+    thresholds: dict,
+) -> Optional[dict]:
     """
-    Check for exit risk conditions:
-    1. Trend risk: 50-DMA < 100-DMA (death cross territory)
-    2. Drawdown risk: price dropped ≥10% from 3-month high
+    Check for exit risk conditions based on config thresholds.
 
     Returns alert dict if risk detected, None otherwise.
     """
-    df = calculate_moving_averages(df)
-
-    # Get latest values
-    latest = df.iloc[-1]
-    current_price = latest["Close"]
-    dma_50 = latest["DMA_50"]
-    dma_100 = latest["DMA_100"]
-
-    # Skip if we don't have enough data for moving averages
-    if pd.isna(dma_50) or pd.isna(dma_100):
-        logger.warning(f"{symbol}: Insufficient data for moving averages")
+    if not thresholds.get("enabled", True):
         return None
 
-    # Calculate common metrics
-    recent_high = get_recent_high(df)
-    drawdown = calculate_drawdown(current_price, recent_high)
-    dma_slope = calculate_dma_slope(df)
+    current_price = float(close_series.iloc[-1])
+    short_ma = get_ma_value(close_series, thresholds["short_ma"])
+    long_ma = get_ma_value(close_series, thresholds["long_ma"])
 
-    # Base metrics for all alerts
-    base_metrics = {
-        "symbol": symbol,
-        "price": current_price,
-        "dma_50": dma_50,
-        "dma_100": dma_100,
-        "recent_high": recent_high,
-        "drawdown_pct": drawdown * 100,
-        "dma_slope_pct": dma_slope * 100,
-        "date": datetime.now().strftime("%Y-%m-%d"),
-    }
+    if short_ma is None or long_ma is None:
+        return None
 
-    # Check trend risk: 50-DMA below 100-DMA
-    if dma_50 < dma_100:
+    # Check MA crossover (50-DMA < 100-DMA)
+    if thresholds.get("use_ma_crossover", True) and is_ma_crossover_bearish(short_ma, long_ma):
         return {
-            **base_metrics,
+            "symbol": symbol,
             "type": "EXIT_RISK",
-            "reason": "Trend weakening (50-DMA < 100-DMA)",
+            "reason": f"Trend weakening ({thresholds['short_ma']}-DMA < {thresholds['long_ma']}-DMA)",
+            "price": current_price,
+            "dma_50": short_ma,
+            "dma_100": long_ma,
         }
 
-    # Check drawdown risk
-    if drawdown >= DRAWDOWN_THRESHOLD:
+    # Check drawdown
+    lookback = thresholds.get("drawdown_lookback_days", 63)
+    threshold = thresholds.get("drawdown_exit_threshold", 0.10)
+    recent_high = get_period_high(high_series, lookback)
+    drawdown = compute_drawdown(current_price, recent_high)
+
+    if drawdown >= threshold:
         return {
-            **base_metrics,
+            "symbol": symbol,
             "type": "EXIT_RISK",
-            "reason": f"Drawdown {drawdown*100:.1f}% from recent high",
+            "reason": f"Drawdown {drawdown*100:.1f}% from {lookback}-day high",
+            "price": current_price,
+            "dma_50": short_ma,
+            "dma_100": long_ma,
+            "drawdown_pct": drawdown * 100,
         }
+
+    # Check days below long MA
+    below_days = thresholds.get("price_below_long_ma_days", 3)
+    if below_days > 0:
+        below_count = days_below_ma(close_series, thresholds["long_ma"], below_days)
+        if below_count >= below_days:
+            return {
+                "symbol": symbol,
+                "type": "EXIT_RISK",
+                "reason": f"Price below {thresholds['long_ma']}-DMA for {below_count} days",
+                "price": current_price,
+                "dma_50": short_ma,
+                "dma_100": long_ma,
+            }
 
     return None
 
@@ -260,175 +192,243 @@ def check_exit_risk(df: pd.DataFrame, symbol: str) -> Optional[dict]:
 # ==============================================================================
 
 
-def check_entry_opportunity(df: pd.DataFrame, symbol: str) -> Optional[dict]:
+def check_entry_opportunity(
+    symbol: str,
+    close_series: pd.Series,
+    high_series: pd.Series,
+    thresholds: dict,
+) -> Optional[dict]:
     """
-    Check for entry opportunity conditions:
-    1. No exit risk active
-    2. Price > 100-DMA (healthy trend)
-    3. 100-DMA slope flat or rising
-    4. Pullback 5-8% from recent high (but not >10%)
-    5. Last 3-5 closes are stable
+    Check for entry opportunity conditions based on config thresholds.
 
     Returns alert dict if opportunity detected, None otherwise.
     """
-    df = calculate_moving_averages(df)
-
-    # Get latest values
-    latest = df.iloc[-1]
-    current_price = latest["Close"]
-    dma_50 = latest["DMA_50"]
-    dma_100 = latest["DMA_100"]
-
-    # Skip if we don't have enough data
-    if pd.isna(dma_100):
+    if not thresholds.get("enabled", True):
         return None
 
-    # Trend filter: price must be above 100-DMA
-    if current_price <= dma_100:
-        logger.debug(f"{symbol}: Price below 100-DMA, skipping entry check")
+    current_price = float(close_series.iloc[-1])
+    long_ma = get_ma_value(close_series, thresholds["long_ma"])
+    short_ma = get_ma_value(close_series, thresholds.get("short_ma", 50))
+
+    if long_ma is None:
         return None
 
-    # Check 100-DMA slope (should be flat or rising)
-    dma_slope = calculate_dma_slope(df)
-    if dma_slope < -0.01:  # More than 1% decline over 10 days
-        logger.debug(f"{symbol}: 100-DMA declining, skipping entry check")
+    # Trend filter: price must be above long MA
+    if thresholds.get("price_above_long_ma", True) and not is_above_ma(current_price, long_ma):
         return None
 
-    # Check pullback condition
-    recent_high = get_recent_high(df, days=42)  # ~2 months for entry timing
-    drawdown = calculate_drawdown(current_price, recent_high)
-
-    # Pullback should be between 5% and 10%
-    if drawdown < PULLBACK_MIN or drawdown >= PULLBACK_MAX:
-        logger.debug(f"{symbol}: Pullback {drawdown*100:.1f}% outside 5-10% range")
+    # Check MA slope
+    slope_days = thresholds.get("long_ma_slope_days", 10)
+    slope = compute_ma_slope(close_series, thresholds["long_ma"], slope_days)
+    if not is_ma_slope_rising(slope):
         return None
+
+    # Check pullback
+    lookback = thresholds.get("lookback_high_days", 42)
+    min_pullback = thresholds.get("min_pullback", 0.05)
+    max_pullback = thresholds.get("max_pullback", 0.08)
+
+    recent_high = get_period_high(high_series, lookback)
+    pullback = compute_drawdown(current_price, recent_high)
+
+    if pullback < min_pullback or pullback >= max_pullback:
+        return None
+
+    # Check overheat
+    if thresholds.get("overheat_enabled", True) and short_ma:
+        overheat_mult = thresholds.get("overheat_multiple", 1.12)
+        if is_overheated(current_price, short_ma, overheat_mult):
+            return None
 
     # Check stability
-    if not check_price_stability(df):
-        logger.debug(f"{symbol}: Recent prices not stable")
+    stability_days = thresholds.get("stability_days", 5)
+    max_drop = thresholds.get("max_single_day_drop", 0.07)
+    if not check_stability(close_series, stability_days, max_drop):
         return None
 
-    # All conditions met!
     return {
-        "type": "ENTRY_OPPORTUNITY",
         "symbol": symbol,
-        "reason": f"Pullback {drawdown*100:.1f}% in healthy uptrend",
+        "type": "ENTRY_OPPORTUNITY",
+        "reason": f"Pullback {pullback*100:.1f}% in healthy uptrend",
         "price": current_price,
-        "dma_50": dma_50,
-        "dma_100": dma_100,
-        "recent_high": recent_high,
-        "drawdown_pct": drawdown * 100,
-        "dma_slope_pct": dma_slope * 100,
-        "date": datetime.now().strftime("%Y-%m-%d"),
+        "dma_50": short_ma,
+        "dma_100": long_ma,
+        "drawdown_pct": pullback * 100,
     }
 
 
 # ==============================================================================
-# TELEGRAM ALERTS
+# STRESS OPPORTUNITIES (BANKS)
 # ==============================================================================
 
 
-def send_telegram_summary(all_metrics: list[dict], exit_risks: list[dict], entry_opps: list[dict]) -> bool:
+def check_market_stress(
+    all_data: dict[str, pd.DataFrame],
+    thresholds: dict,
+) -> bool:
+    """Check if market stress conditions are met."""
+    watch_symbols = thresholds.get("stress_watch_symbols", ["SPY", "VIXY", "KRE"])
+
+    stress_signals = 0
+
+    # Check SPY drawdown
+    if "SPY" in all_data:
+        spy_close = get_close_series(all_data["SPY"])
+        spy_high = get_high_series(all_data["SPY"])
+        if len(spy_close) > 0:
+            spy_recent_high = get_period_high(spy_high, 63)
+            spy_drawdown = compute_drawdown(float(spy_close.iloc[-1]), spy_recent_high)
+            if spy_drawdown >= thresholds.get("stress_spy_drawdown_threshold", 0.08):
+                stress_signals += 1
+                logger.info(f"Stress signal: SPY drawdown {spy_drawdown*100:.1f}%")
+
+    # Check VIXY trending up (simple: above 10-day MA)
+    if thresholds.get("stress_vixy_trending_up", True) and "VIXY" in all_data:
+        vixy_close = get_close_series(all_data["VIXY"])
+        if len(vixy_close) >= 10:
+            vixy_ma = get_ma_value(vixy_close, 10)
+            if vixy_ma and float(vixy_close.iloc[-1]) > vixy_ma:
+                stress_signals += 1
+                logger.info("Stress signal: VIXY trending up")
+
+    # Check KRE below long MA
+    if thresholds.get("stress_kre_below_long_ma", True) and "KRE" in all_data:
+        kre_close = get_close_series(all_data["KRE"])
+        if len(kre_close) >= 100:
+            kre_ma = get_ma_value(kre_close, 100)
+            if kre_ma and float(kre_close.iloc[-1]) < kre_ma:
+                stress_signals += 1
+                logger.info("Stress signal: KRE below 100-DMA")
+
+    # Need at least 2 stress signals
+    is_stressed = stress_signals >= 2
+    if is_stressed:
+        logger.warning(f"MARKET STRESS CONFIRMED: {stress_signals} signals")
+
+    return is_stressed
+
+
+def check_bank_opportunity(
+    symbol: str,
+    close_series: pd.Series,
+    high_series: pd.Series,
+    thresholds: dict,
+    market_stressed: bool,
+) -> Optional[dict]:
     """
-    Send ONE combined summary message via Telegram Bot API in table format.
-    Returns True if successful, False otherwise.
+    Check for bank opportunity during market stress.
+    Only emits BANK OPPORTUNITY WATCH, no exit alerts.
     """
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-
-    if not bot_token or not chat_id:
-        logger.warning("Telegram credentials not configured. Skipping alert.")
-        return False
-
-    # Build the message in table format
-    date_str = datetime.now().strftime("%Y-%m-%d")
-
-    # Sort metrics by 3M drop descending (highest drop first)
-    sorted_metrics = sorted(all_metrics, key=lambda x: x["drop_3m"], reverse=True)
-
-    lines = [
-        f"📈 *INVESTMENT ALERT*",
-        f"📅 {date_str}",
-        f"📊 {len(entry_opps)} entry | {len(exit_risks)} exit",
-        "",
-    ]
-
-    # Send each stock as a formatted block for better readability
-    for m in sorted_metrics:
-        status_icon = {
-            "🟢 ENTRY OPP": "🟢",
-            "✅ HEALTHY": "✅",
-            "👀 WATCH": "👀",
-            "⏸️ WAIT": "⏸️",
-            "🚨 EXIT RISK": "🚨",
-        }.get(m["status"], "?")
-
-        lines.append(f"{status_icon} *{m['symbol']}* - ${m['price']:.2f}")
-        lines.append(f"   Drop: 1D={m['drop_1d']:.1f}% | 1W={m['drop_1w']:.1f}% | 1M={m['drop_1m']:.1f}% | 3M={m['drop_3m']:.1f}%")
-        lines.append(f"   High: 1D=${m['high_1d']:.0f} | 1W=${m['high_1w']:.0f} | 1M=${m['high_1m']:.0f} | 3M=${m['high_3m']:.0f}")
-        lines.append("")
-
-    lines.append("_🟢Entry 🚨Exit ✅Hold ⏸️Wait 👀Watch_")
-
-    message = "\n".join(lines)
-
-    # Send via Telegram API
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "Markdown",
-    }
-
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            logger.info("Telegram summary sent successfully!")
-            return True
-        else:
-            logger.error(f"Telegram API error: {response.status_code} - {response.text}")
-            return False
-    except requests.RequestException as e:
-        logger.error(f"Failed to send Telegram alert: {e}")
-        return False
-
-
-# ==============================================================================
-# MAIN ANALYSIS
-# ==============================================================================
-
-
-def get_symbol_metrics(df: pd.DataFrame, symbol: str) -> Optional[dict]:
-    """
-    Get all metrics for a symbol regardless of alert status.
-    Returns a dict with all key metrics.
-    """
-    df = calculate_moving_averages(df)
-
-    latest = df.iloc[-1]
-    current_price = latest["Close"]
-    dma_50 = latest["DMA_50"]
-    dma_100 = latest["DMA_100"]
-
-    if pd.isna(dma_50) or pd.isna(dma_100):
+    if not thresholds.get("enabled", True):
         return None
 
-    dma_slope = calculate_dma_slope(df)
+    # Requires market stress confirmation
+    if thresholds.get("requires_stress_confirmation", True) and not market_stressed:
+        return None
 
-    # Get multi-timeframe highs
-    highs = get_multi_timeframe_highs(df)
+    current_price = float(close_series.iloc[-1])
 
-    # Calculate drawdown from 1-day high (intraday high)
-    drawdown = calculate_drawdown(current_price, highs["high_1d"])
+    # Check drawdown range (15-35%)
+    lookback = thresholds.get("dip_lookback_days", 126)
+    min_drawdown = thresholds.get("min_drawdown", 0.15)
+    max_drawdown = thresholds.get("max_drawdown", 0.35)
+
+    recent_high = get_period_high(high_series, lookback)
+    drawdown = compute_drawdown(current_price, recent_high)
+
+    if drawdown < min_drawdown or drawdown > max_drawdown:
+        return None
+
+    # Safety filter: prefer above 200-DMA
+    long_ma = thresholds.get("long_ma", 200)
+    ma_200 = get_ma_value(close_series, long_ma)
+    above_200dma = ma_200 is not None and current_price > ma_200
+
+    return {
+        "symbol": symbol,
+        "type": "BANK_OPPORTUNITY_WATCH",
+        "reason": f"Drawdown {drawdown*100:.1f}% during market stress",
+        "price": current_price,
+        "drawdown_pct": drawdown * 100,
+        "above_200dma": above_200dma,
+        "dma_200": ma_200,
+    }
+
+
+# ==============================================================================
+# FINANCE CONFIRMATION
+# ==============================================================================
+
+
+def check_finance_confirmation(
+    symbol: str,
+    close_series: pd.Series,
+    benchmark_series: pd.Series,
+    thresholds: dict,
+) -> Optional[dict]:
+    """
+    Check for finance sector confirmation signals.
+    Emits alert when sector underperforms benchmark.
+    """
+    if not thresholds.get("enabled", True):
+        return None
+
+    window = thresholds.get("window_days", 21)
+    threshold = thresholds.get("relative_strength_threshold", -0.03)
+
+    rel_strength = compute_relative_strength(close_series, benchmark_series, window)
+
+    if rel_strength < threshold:
+        return {
+            "symbol": symbol,
+            "type": "FINANCE_CONFIRMATION",
+            "reason": f"Underperforming {thresholds.get('compare_to', 'SPY')} by {rel_strength*100:.1f}% over {window} days",
+            "relative_strength": rel_strength * 100,
+        }
+
+    return None
+
+
+# ==============================================================================
+# METRICS CALCULATION
+# ==============================================================================
+
+
+def get_symbol_metrics(
+    symbol: str,
+    close_series: pd.Series,
+    high_series: pd.Series,
+    exit_thresholds: dict,
+    entry_thresholds: dict,
+) -> Optional[dict]:
+    """Get all metrics for a symbol regardless of alert status."""
+    if len(close_series) < 100:
+        return None
+
+    current_price = float(close_series.iloc[-1])
+    dma_50 = get_ma_value(close_series, 50)
+    dma_100 = get_ma_value(close_series, 100)
+
+    if dma_50 is None or dma_100 is None:
+        return None
+
+    dma_slope = compute_ma_slope(close_series, 100, 10)
+    highs = get_multi_timeframe_highs(high_series)
+
+    # Drawdown from 1-day high
+    drawdown = compute_drawdown(current_price, highs["high_1d"])
+    drawdown_threshold = exit_thresholds.get("drawdown_exit_threshold", 0.10)
+    min_pullback = entry_thresholds.get("min_pullback", 0.05)
+    max_pullback = entry_thresholds.get("max_pullback", 0.08)
 
     # Determine status
     if dma_50 < dma_100:
         status = "🚨 EXIT RISK"
         status_reason = "50-DMA < 100-DMA"
-    elif drawdown >= DRAWDOWN_THRESHOLD:
+    elif drawdown >= drawdown_threshold:
         status = "🚨 EXIT RISK"
         status_reason = f"Drawdown {drawdown*100:.1f}%"
-    elif current_price > dma_100 and PULLBACK_MIN <= drawdown < PULLBACK_MAX and dma_slope >= -0.01:
+    elif current_price > dma_100 and min_pullback <= drawdown < max_pullback and dma_slope >= -0.01:
         status = "🟢 ENTRY OPP"
         status_reason = f"Pullback {drawdown*100:.1f}%"
     elif current_price > dma_100 and dma_50 > dma_100:
@@ -441,18 +441,17 @@ def get_symbol_metrics(df: pd.DataFrame, symbol: str) -> Optional[dict]:
         status = "⏸️ WAIT"
         status_reason = "Below 100-DMA"
 
-    # Calculate drop from each timeframe high
-    drop_1d = calculate_drawdown(current_price, highs["high_1d"]) * 100
-    drop_1w = calculate_drawdown(current_price, highs["high_1w"]) * 100
-    drop_1m = calculate_drawdown(current_price, highs["high_1m"]) * 100
-    drop_3m = calculate_drawdown(current_price, highs["high_3m"]) * 100
+    # Calculate drops
+    drop_1d = compute_drawdown(current_price, highs["high_1d"]) * 100
+    drop_1w = compute_drawdown(current_price, highs["high_1w"]) * 100
+    drop_1m = compute_drawdown(current_price, highs["high_1m"]) * 100
+    drop_3m = compute_drawdown(current_price, highs["high_3m"]) * 100
 
     return {
         "symbol": symbol,
         "price": current_price,
         "dma_50": dma_50,
         "dma_100": dma_100,
-        "recent_high": highs["high_1d"],
         "high_1d": highs["high_1d"],
         "high_1w": highs["high_1w"],
         "high_1m": highs["high_1m"],
@@ -469,123 +468,166 @@ def get_symbol_metrics(df: pd.DataFrame, symbol: str) -> Optional[dict]:
     }
 
 
-def analyze_symbol(symbol: str, df: pd.DataFrame) -> tuple[Optional[dict], Optional[dict]]:
+# ==============================================================================
+# MAIN ANALYSIS
+# ==============================================================================
+
+
+def analyze_monitored_symbols(
+    monitor_symbols: list[str],
+    all_data: dict[str, pd.DataFrame],
+    config: dict,
+    state_dir: str,
+    dedupe_window: int,
+) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     """
-    Analyze a single symbol for exit risk or entry opportunity.
-    Returns (alert, metrics) tuple.
-    Only one alert per symbol per run to avoid spam.
+    Analyze monitored symbols for alerts.
+    Returns (exit_risks, entry_opps, bank_opps, all_metrics).
     """
-    if df is None or len(df) < DMA_LONG:
-        logger.warning(f"{symbol}: Insufficient data for analysis")
-        return None, None
+    exit_risks = []
+    entry_opps = []
+    bank_opps = []
+    all_metrics = []
 
-    # Get metrics for all symbols display
-    metrics = get_symbol_metrics(df, symbol)
+    # Get thresholds (use core_trend as default for monitor symbols)
+    exit_thresholds = get_exit_thresholds(config, "core_trend")
+    entry_thresholds = get_entry_thresholds(config, "core_trend")
+    stress_thresholds = get_stress_opportunity_thresholds(config)
+    stress_symbols = set(get_category_symbols(config, "stress_opportunities"))
 
-    # Priority 1: Check for exit risk
-    exit_alert = check_exit_risk(df, symbol)
-    if exit_alert:
-        logger.warning(f"{symbol}: EXIT RISK detected - {exit_alert['reason']}")
-        return exit_alert, metrics
+    # Check market stress for bank opportunities
+    market_stressed = check_market_stress(all_data, stress_thresholds)
 
-    # Priority 2: Check for entry opportunity (only if no exit risk)
-    entry_alert = check_entry_opportunity(df, symbol)
-    if entry_alert:
-        logger.info(f"{symbol}: ENTRY OPPORTUNITY detected - {entry_alert['reason']}")
-        return entry_alert, metrics
+    for symbol in monitor_symbols:
+        df = all_data.get(symbol)
+        if df is None or len(df) < 100:
+            logger.warning(f"{symbol}: Insufficient data, skipping")
+            continue
 
-    logger.info(f"{symbol}: No alerts triggered")
-    return None, metrics
+        close = get_close_series(df)
+        high = get_high_series(df)
+
+        # Get metrics
+        metrics = get_symbol_metrics(symbol, close, high, exit_thresholds, entry_thresholds)
+        if metrics:
+            all_metrics.append(metrics)
+
+        # Check for stress opportunity (banks) - no exit alerts
+        if symbol in stress_symbols:
+            bank_alert = check_bank_opportunity(symbol, close, high, stress_thresholds, market_stressed)
+            if bank_alert:
+                bank_opps.append(bank_alert)
+                logger.warning(f"{symbol}: BANK OPPORTUNITY WATCH - {bank_alert['reason']}")
+            continue  # Skip regular exit/entry for stress symbols
+
+        # Check exit risk
+        exit_alert = check_exit_risk(symbol, close, high, exit_thresholds)
+        if exit_alert:
+            exit_risks.append(exit_alert)
+            logger.warning(f"{symbol}: EXIT RISK - {exit_alert['reason']}")
+            continue  # Don't check entry if exit risk
+
+        # Check entry opportunity
+        entry_alert = check_entry_opportunity(symbol, close, high, entry_thresholds)
+        if entry_alert:
+            entry_opps.append(entry_alert)
+            logger.info(f"{symbol}: ENTRY OPPORTUNITY - {entry_alert['reason']}")
+
+    return exit_risks, entry_opps, bank_opps, all_metrics
+
+
+def print_summary_table(all_metrics: list[dict]) -> None:
+    """Print the summary table to console."""
+    if not all_metrics:
+        return
+
+    logger.info("")
+    logger.info("=" * 160)
+    logger.info("📈 ALL SYMBOLS OVERVIEW")
+    logger.info("=" * 160)
+    logger.info(f"{'Symbol':<8} {'Status':<14} {'Price':>10} {'1D Drop':>9} {'1W Drop':>9} {'1M Drop':>9} {'3M Drop':>9} {'1D High':>10} {'1W High':>10} {'1M High':>10} {'3M High':>10}")
+    logger.info("-" * 160)
+
+    sorted_metrics = sorted(all_metrics, key=lambda x: x["drop_3m"], reverse=True)
+
+    for m in sorted_metrics:
+        logger.info(
+            f"{m['symbol']:<8} {m['status']:<14} "
+            f"${m['price']:>9.2f} {m['drop_1d']:>8.1f}% {m['drop_1w']:>8.1f}% {m['drop_1m']:>8.1f}% {m['drop_3m']:>8.1f}% "
+            f"${m['high_1d']:>9.2f} ${m['high_1w']:>9.2f} ${m['high_1m']:>9.2f} ${m['high_3m']:>9.2f}"
+        )
+
+    logger.info("-" * 160)
+    logger.info("")
+    logger.info("📖 STATUS GUIDE:")
+    logger.info("   🟢 ENTRY OPP  = Good pullback (5-8%) in healthy uptrend → Consider buying")
+    logger.info("   ✅ HEALTHY    = Strong uptrend, 50-DMA > 100-DMA → Hold or wait for pullback")
+    logger.info("   👀 WATCH      = Above 100-DMA but not ideal → Monitor closely")
+    logger.info("   ⏸️ WAIT       = Below 100-DMA → Not ready for entry yet")
+    logger.info("   🚨 EXIT RISK  = Trend breaking down → Consider reducing position")
+    logger.info("   🏦 BANK OPP   = Bank opportunity during market stress")
+    logger.info("")
 
 
 def main():
     """Main entry point for the investor alert system."""
     logger.info("=" * 60)
-    logger.info("Long-Term Investor Alert System")
+    logger.info("Long-Term Investor Alert System (Config-Driven)")
     logger.info(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 60)
 
-    # Load symbols
-    symbols = load_symbols()
-    if not symbols:
+    # Load config
+    config = load_config()
+
+    # Get settings from config
+    state_dir = get_state_dir(config)
+    dedupe_window = get_dedupe_window(config)
+    batch_size = get_batch_size(config)
+    period = get_history_period(config, "monitor")
+    monitor_file = get_monitor_symbols_file(config)
+    global_filters = get_global_filters(config)
+
+    # Ensure state directory exists
+    ensure_state_dir(state_dir)
+
+    # Cleanup old alerts
+    cleanup_old_alerts(state_dir)
+
+    # Load monitor symbols (existing stocks.json)
+    monitor_symbols = load_monitor_symbols(monitor_file)
+    if not monitor_symbols:
         logger.error("No symbols to analyze. Exiting.")
         return
 
-    # Fetch ALL data in ONE batch request (efficient & rate-limit safe)
-    all_data = fetch_all_price_data(symbols)
+    # Collect all symbols needed
+    all_symbols = collect_all_symbols(config, monitor_symbols)
+    logger.info(f"Total unique symbols to fetch: {len(all_symbols)}")
 
+    # Fetch all data
+    all_data = batch_download(all_symbols, period=period, batch_size=batch_size)
     if not all_data:
         logger.error("Failed to fetch any data. Exiting.")
         return
 
-    # Analyze each symbol using the pre-fetched data
-    alerts = []
-    all_metrics = []
-    for symbol in symbols:
-        try:
-            df = all_data.get(symbol)
-            if df is None:
-                logger.warning(f"{symbol}: No data available, skipping")
-                continue
-            alert, metrics = analyze_symbol(symbol, df)
-            if alert:
-                alerts.append(alert)
-            if metrics:
-                all_metrics.append(metrics)
-        except Exception as e:
-            logger.error(f"Error analyzing {symbol}: {e}")
-            continue
+    # Analyze monitored symbols
+    exit_risks, entry_opps, bank_opps, all_metrics = analyze_monitored_symbols(
+        monitor_symbols, all_data, config, state_dir, dedupe_window
+    )
 
     # Summary
     logger.info("=" * 60)
-    logger.info(f"Analysis complete. {len(alerts)} alerts generated.")
-
-    # Send alerts via Telegram
-    exit_risks = [a for a in alerts if a["type"] == "EXIT_RISK"]
-    entry_opps = [a for a in alerts if a["type"] == "ENTRY_OPPORTUNITY"]
-
+    logger.info(f"Analysis complete.")
     logger.info(f"Exit Risks: {len(exit_risks)}")
     logger.info(f"Entry Opportunities: {len(entry_opps)}")
+    logger.info(f"Bank Opportunities: {len(bank_opps)}")
 
-    # Print ALL SYMBOLS summary table
-    if all_metrics:
-        logger.info("")
-        logger.info("=" * 160)
-        logger.info("📈 ALL SYMBOLS OVERVIEW")
-        logger.info("=" * 160)
-        logger.info(f"{'Symbol':<8} {'Status':<14} {'Price':>10} {'1D Drop':>9} {'1W Drop':>9} {'1M Drop':>9} {'3M Drop':>9} {'1D High':>10} {'1W High':>10} {'1M High':>10} {'3M High':>10}")
-        logger.info("-" * 160)
+    # Print summary table
+    print_summary_table(all_metrics)
 
-        # Sort by 3M drop descending (highest drop first)
-        sorted_metrics = sorted(all_metrics, key=lambda x: x["drop_3m"], reverse=True)
-
-        for m in sorted_metrics:
-            logger.info(
-                f"{m['symbol']:<8} {m['status']:<14} "
-                f"${m['price']:>9.2f} {m['drop_1d']:>8.1f}% {m['drop_1w']:>8.1f}% {m['drop_1m']:>8.1f}% {m['drop_3m']:>8.1f}% "
-                f"${m['high_1d']:>9.2f} ${m['high_1w']:>9.2f} ${m['high_1m']:>9.2f} ${m['high_3m']:>9.2f}"
-            )
-
-        logger.info("-" * 160)
-        logger.info("")
-        logger.info("📖 STATUS GUIDE:")
-        logger.info("   🟢 ENTRY OPP  = Good pullback (5-8%) in healthy uptrend → Consider buying")
-        logger.info("   ✅ HEALTHY    = Strong uptrend, 50-DMA > 100-DMA → Hold or wait for pullback")
-        logger.info("   👀 WATCH      = Above 100-DMA but not ideal → Monitor closely")
-        logger.info("   ⏸️ WAIT       = Below 100-DMA → Not ready for entry yet")
-        logger.info("   🚨 EXIT RISK  = Trend breaking down → Consider reducing position")
-        logger.info("")
-        logger.info("📊 COLUMN GUIDE:")
-        logger.info("   Price   = Current stock price (close)")
-        logger.info("   1D Drop = Drop from today's intraday high")
-        logger.info("   1W Drop = Drop from 1-week high")
-        logger.info("   1M Drop = Drop from 1-month high")
-        logger.info("   3M Drop = Drop from 3-month high")
-        logger.info("   1D/1W/1M/3M High = Highest price in that timeframe")
-        logger.info("")
-
-    # Send ONE combined Telegram message
-    send_telegram_summary(all_metrics, exit_risks, entry_opps)
+    # Send Telegram summary
+    if is_telegram_enabled(config) and all_metrics:
+        message = format_weekly_summary(all_metrics, exit_risks, entry_opps, bank_opps)
+        send_telegram(message)
 
     logger.info("=" * 60)
     logger.info("Done.")

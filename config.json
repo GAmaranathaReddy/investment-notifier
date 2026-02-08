@@ -1,0 +1,208 @@
+{
+  "app": {
+    "mode": {
+      "monitor_enabled": true,
+      "discovery_enabled": true
+    },
+    "data_source": {
+      "provider": "yfinance",
+      "interval": "1d",
+      "history_period_monitor": "12mo",
+      "history_period_discovery": "12mo",
+      "batch_size": 25
+    },
+    "outputs": {
+      "recommended_symbols_file": "recommended_symbols.json",
+      "monitor_symbols_file": "stocks.json",
+      "state_dir": "state"
+    }
+  },
+
+  "notifications": {
+    "telegram": {
+      "enabled": true,
+      "env_bot_token": "TELEGRAM_BOT_TOKEN",
+      "env_chat_id": "TELEGRAM_CHAT_ID",
+      "send_on": {
+        "exit_risk": true,
+        "entry_opportunity": true,
+        "new_recommendations": true,
+        "weekly_summary": true
+      },
+      "anti_spam": {
+        "dedupe_window_days": 3,
+        "max_messages_per_run": 10
+      }
+    }
+  },
+
+  "categories": {
+    "core_trend": {
+      "description": "Broad market + major trend leaders. Used for trend following and safe exit alerts.",
+      "symbols": ["SPY", "QQQ", "DIA", "IWM"],
+      "rules": {
+        "exit": {
+          "use_ma_crossover": true,
+          "short_ma": 50,
+          "long_ma": 100,
+          "drawdown_lookback_days": 63,
+          "drawdown_exit_threshold": 0.10,
+          "price_below_long_ma_days": 3
+        },
+        "entry": {
+          "enabled": true,
+          "trend_filter": {
+            "price_above_long_ma": true,
+            "long_ma_slope_days": 10
+          },
+          "pullback": {
+            "lookback_high_days": 42,
+            "min_pullback": 0.05,
+            "max_pullback": 0.08
+          },
+          "stability": {
+            "check_last_n_days": 5,
+            "max_single_day_drop": 0.07
+          }
+        }
+      }
+    },
+
+    "emerging_rotation": {
+      "description": "Rotation-aware baskets to catch early cycles (metals, energy, agri, AI infra). Use scouts first, then expand.",
+      "baskets": {
+        "commodities_broad": ["DBC", "PDBC"],
+        "precious_metals": ["GLD", "SLV", "PPLT"],
+        "industrial_metals": ["CPER", "DBB"],
+        "energy": ["USO", "UNG"],
+        "agriculture": ["DBA"],
+        "ai_infra": ["SMH", "SOXX", "XLK"]
+      },
+      "expand": {
+        "enabled": true,
+        "expand_when_bucket_is_leader": true,
+        "relative_strength": {
+          "window_days": 21,
+          "leader_top_k_buckets": 2
+        },
+        "expand_sources": {
+          "miner_etfs": {
+            "precious_metals": ["GDX", "SIL"],
+            "industrial_metals": ["COPX"]
+          },
+          "top_n_holdings_per_etf": 20
+        }
+      },
+      "rules": {
+        "entry": {
+          "enabled": true,
+          "trend_filter": {
+            "price_above_long_ma": true,
+            "short_ma": 50,
+            "long_ma": 100
+          },
+          "pullback": {
+            "lookback_high_days": 42,
+            "min_pullback": 0.05,
+            "max_pullback": 0.08
+          },
+          "overheat_filter": {
+            "enabled": true,
+            "max_close_over_short_ma_multiple": 1.12
+          }
+        },
+        "exit": {
+          "enabled": true,
+          "drawdown_lookback_days": 63,
+          "drawdown_exit_threshold": 0.12,
+          "use_ma_crossover": true,
+          "short_ma": 50,
+          "long_ma": 100
+        }
+      }
+    },
+
+    "stress_opportunities": {
+      "description": "High-quality, systemically important assets to buy during panic (not small regional banks).",
+      "symbols": ["JPM", "BAC", "DBSDF", "SBIN.NS"],
+      "rules": {
+        "opportunity": {
+          "enabled": true,
+          "requires_market_stress_confirmation": true,
+          "market_stress_signals": {
+            "stress_watch_symbols": ["SPY", "VIXY", "KRE"],
+            "stress_if_vixy_trending_up": true,
+            "stress_if_kre_below_long_ma": true,
+            "stress_if_spy_drawdown_threshold": 0.08
+          },
+          "dip_buy_trigger": {
+            "lookback_high_days": 126,
+            "min_drawdown": 0.15,
+            "max_drawdown": 0.35
+          },
+          "safety_filter": {
+            "prefer_price_above_long_ma": true,
+            "long_ma": 200
+          }
+        },
+        "exit": {
+          "enabled": false
+        }
+      }
+    },
+
+    "defensive_protection": {
+      "description": "Capital protection instruments that tend to perform in risk-off regimes.",
+      "symbols": ["TLT", "IEF", "BND", "USMV", "SPLV", "SCHD", "VIG", "XLU", "GLD"],
+      "rules": {
+        "entry": {
+          "enabled": true,
+          "trend_filter": {
+            "price_above_long_ma": true,
+            "long_ma": 100
+          }
+        },
+        "exit": {
+          "enabled": true,
+          "drawdown_lookback_days": 63,
+          "drawdown_exit_threshold": 0.10,
+          "use_ma_crossover": true,
+          "short_ma": 50,
+          "long_ma": 100
+        }
+      }
+    },
+
+    "finance_confirmation": {
+      "description": "Finance sector confirmation signals (macro health). Not for discovery expansion.",
+      "symbols": ["XLF", "KBE", "KRE"],
+      "rules": {
+        "alerts": {
+          "enabled": true,
+          "underperform_watch": {
+            "compare_to": "SPY",
+            "window_days": 21,
+            "alert_if_relative_strength_below": -0.03
+          }
+        }
+      }
+    }
+  },
+
+  "global_filters": {
+    "min_history_days": 120,
+    "min_price": 5,
+    "exclude_otc": true,
+    "exclude_leveraged_etfs": true,
+    "max_universe_size": 200
+  },
+
+  "schedules": {
+    "monitoring": {
+      "recommended_frequency": "daily_after_close"
+    },
+    "discovery": {
+      "recommended_frequency": "weekly"
+    }
+  }
+}
