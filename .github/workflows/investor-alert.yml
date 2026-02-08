@@ -2,15 +2,26 @@ name: Investor Alert
 
 on:
   schedule:
-    # Run daily at 9:00 PM UTC (after US market close)
+    # Run monitor daily at 9:00 PM UTC (after US market close) Mon-Fri
     - cron: '0 21 * * 1-5'
     # Run discovery daily at 6:00 PM UTC Mon-Fri
     - cron: '0 18 * * 1-5'
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        required: true
+        default: 'monitor'
+        type: choice
+        options:
+          - monitor
+          - discovery
+          - both
 
 jobs:
-  analyze:
+  monitor:
     runs-on: ubuntu-latest
+    if: (github.event.schedule == '0 21 * * 1-5') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'monitor' || github.event.inputs.mode == 'both'))
 
     steps:
       - name: Checkout repository
@@ -25,8 +36,54 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Restore state
+        uses: actions/cache@v4
+        with:
+          path: state/
+          key: investor-alert-state-${{ github.run_id }}
+          restore-keys: |
+            investor-alert-state-
+
       - name: Run investor alert
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python investor_alert.py
+
+  discovery:
+    runs-on: ubuntu-latest
+    if: (github.event.schedule == '0 18 * * 1-5') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'discovery' || github.event.inputs.mode == 'both'))
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore state
+        uses: actions/cache@v4
+        with:
+          path: state/
+          key: investor-alert-state-${{ github.run_id }}
+          restore-keys: |
+            investor-alert-state-
+
+      - name: Run symbol discovery
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python discover_symbols.py
+
+      - name: Upload recommendations
+        uses: actions/upload-artifact@v4
+        with:
+          name: recommended-symbols
+          path: recommended_symbols.json
+          retention-days: 30
