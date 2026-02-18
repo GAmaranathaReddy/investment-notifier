@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investment Notifier - Symbol Manager</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --accent: #e94560;
+            --accent-green: #00d26a;
+            --accent-blue: #4cc9f0;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --border: #2d3748;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: var(--bg-secondary);
+            padding: 20px 0;
+            margin-bottom: 30px;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        header h1 {
+            text-align: center;
+            font-size: 2rem;
+            color: var(--accent);
+        }
+
+        header p {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card-description {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+
+        .symbol-count {
+            background: var(--accent);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .symbols-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .symbol-tag {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+
+        .symbol-tag:hover {
+            background: var(--bg-primary);
+        }
+
+        .symbol-tag .delete-btn {
+            background: none;
+            border: none;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0;
+            line-height: 1;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .symbol-tag .delete-btn:hover {
+            opacity: 1;
+        }
+
+        .add-form {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .add-form input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .add-form input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .add-form input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+
+        .btn:hover {
+            transform: scale(1.02);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: var(--accent-green);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--accent);
+            color: white;
+        }
+
+        .basket-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px dashed var(--border);
+        }
+
+        .basket-title {
+            font-size: 0.95rem;
+            color: var(--accent-green);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .basket-title::before {
+            content: '📦';
+        }
+
+        /* Recommended Section */
+        .recommended-section {
+            margin-top: 30px;
+        }
+
+        .recommended-section .card {
+            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+        }
+
+        .recommended-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .recommended-table th,
+        .recommended-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .recommended-table th {
+            color: var(--accent-blue);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        .recommended-table tr:hover td {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-watch {
+            background: #ffc107;
+            color: #000;
+        }
+
+        .status-momentum {
+            background: var(--accent-green);
+            color: white;
+        }
+
+        .status-opportunity {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            transform: translateX(150%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast.success {
+            background: var(--accent-green);
+        }
+
+        .toast.error {
+            background: var(--accent);
+        }
+
+        /* Tabs for recommended */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 8px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover,
+        .tab-btn.active {
+            background: var(--accent-blue);
+            color: white;
+            border-color: var(--accent-blue);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Stats */
+        .stats-bar {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            background: var(--bg-card);
+            padding: 15px 30px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--accent-blue);
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .add-form {
+                flex-direction: column;
+            }
+
+            header h1 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>📈 Investment Notifier</h1>
+            <p>Symbol Configuration Manager</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-value">{{ stocks | length }}</div>
+                <div class="stat-label">Watchlist</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ categories | length }}</div>
+                <div class="stat-label">Categories</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ recommended.total_count or 0 }}</div>
+                <div class="stat-label">Recommended</div>
+            </div>
+        </div>
+
+        <!-- Watchlist Section -->
+        <div class="grid">
+            <div class="card" id="watchlist-card">
+                <div class="card-header">
+                    <h2 class="card-title">🎯 Watchlist (stocks.json)</h2>
+                    <span class="symbol-count" id="stocks-count">{{ stocks | length }}</span>
+                </div>
+                <p class="card-description">Your main monitoring watchlist - symbols you actively track</p>
+                <div class="symbols-container" id="stocks-container">
+                    {% for symbol in stocks %}
+                    <div class="symbol-tag" data-symbol="{{ symbol }}">
+                        {{ symbol }}
+                        <button class="delete-btn" onclick="deleteStock('{{ symbol }}')" title="Remove">×</button>
+                    </div>
+                    {% endfor %}
+                </div>
+                <form class="add-form" onsubmit="addStock(event)">
+                    <input type="text" id="new-stock" placeholder="Add symbol (e.g., AAPL)" autocomplete="off">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                </form>
+            </div>
+
+            <!-- Category Cards -->
+            {% for cat_name, cat_data in categories.items() %}
+            <div class="card" id="card-{{ cat_name }}">
+                <div class="card-header">
+                    <h2 class="card-title">{{ cat_name.replace('_', ' ') }}</h2>
+                    <span class="symbol-count">
+                        {{ (cat_data.symbols | length) + (cat_data.baskets.values() | map('length') | sum) }}
+                    </span>
+                </div>
+                <p class="card-description">{{ cat_data.description }}</p>
+
+                {% if cat_data.symbols %}
+                <div class="symbols-container" id="symbols-{{ cat_name }}">
+                    {% for symbol in cat_data.symbols %}
+                    <div class="symbol-tag" data-symbol="{{ symbol }}">
+                        {{ symbol }}
+                        <button class="delete-btn" onclick="deleteCategorySymbol('{{ cat_name }}', '{{ symbol }}')" title="Remove">×</button>
+                    </div>
+                    {% endfor %}
+                </div>
+                <form class="add-form" onsubmit="addCategorySymbol(event, '{{ cat_name }}')">
+                    <input type="text" placeholder="Add symbol" autocomplete="off" id="input-{{ cat_name }}">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                </form>
+                {% endif %}
+
+                {% if cat_data.baskets %}
+                {% for basket_name, basket_symbols in cat_data.baskets.items() %}
+                <div class="basket-section">
+                    <h3 class="basket-title">{{ basket_name.replace('_', ' ') }}</h3>
+                    <div class="symbols-container" id="basket-{{ cat_name }}-{{ basket_name }}">
+                        {% for symbol in basket_symbols %}
+                        <div class="symbol-tag" data-symbol="{{ symbol }}">
+                            {{ symbol }}
+                            <button class="delete-btn" onclick="deleteBasketSymbol('{{ cat_name }}', '{{ basket_name }}', '{{ symbol }}')" title="Remove">×</button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <form class="add-form" onsubmit="addBasketSymbol(event, '{{ cat_name }}', '{{ basket_name }}')">
+                        <input type="text" placeholder="Add to {{ basket_name.replace('_', ' ') }}" autocomplete="off" id="input-{{ cat_name }}-{{ basket_name }}">
+                        <button type="submit" class="btn btn-primary">Add</button>
+                    </form>
+                </div>
+                {% endfor %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Recommended Section -->
+        {% if recommended.recommendations %}
+        <div class="recommended-section">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">✨ Recommended Symbols</h2>
+                    <span class="symbol-count">{{ recommended.total_count or 0 }}</span>
+                </div>
+                <p class="card-description">
+                    Auto-generated recommendations • Last updated: {{ recommended.generated_at[:19] if recommended.generated_at else 'N/A' }}
+                </p>
+
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="showTab('all')">All</button>
+                    {% for cat in recommended.by_category.keys() %}
+                    <button class="tab-btn" onclick="showTab('{{ cat }}')">{{ cat.replace('_', ' ') }}</button>
+                    {% endfor %}
+                </div>
+
+                <!-- All Tab -->
+                <div class="tab-content active" id="tab-all">
+                    <table class="recommended-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th>Price</th>
+                                <th>Score</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rec in recommended.recommendations %}
+                            <tr>
+                                <td><strong>{{ rec.symbol }}</strong></td>
+                                <td>{{ rec.category.replace('_', ' ') }}</td>
+                                <td>
+                                    <span class="status-badge status-{{ rec.status }}">{{ rec.status }}</span>
+                                </td>
+                                <td>${{ '%.2f' | format(rec.price) }}</td>
+                                <td>{{ '%.2f' | format(rec.score) }}</td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ rec.reason }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Category Tabs -->
+                {% for cat, symbols in recommended.by_category.items() %}
+                <div class="tab-content" id="tab-{{ cat }}">
+                    <table class="recommended-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Status</th>
+                                <th>Price</th>
+                                <th>Score</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rec in recommended.recommendations if rec.category == cat %}
+                            <tr>
+                                <td><strong>{{ rec.symbol }}</strong></td>
+                                <td>
+                                    <span class="status-badge status-{{ rec.status }}">{{ rec.status }}</span>
+                                </td>
+                                <td>${{ '%.2f' | format(rec.price) }}</td>
+                                <td>{{ '%.2f' | format(rec.score) }}</td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ rec.reason }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // Toast notification
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Tab switching
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        // Stocks CRUD
+        async function addStock(e) {
+            e.preventDefault();
+            const input = document.getElementById('new-stock');
+            const symbol = input.value.trim().toUpperCase();
+
+            if (!symbol) return;
+
+            try {
+                const response = await fetch('/api/stocks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    location.reload();
+                    showToast(`Added ${symbol} to watchlist`);
+                } else {
+                    showToast(data.error || 'Failed to add symbol', 'error');
+                }
+            } catch (err) {
+                showToast('Network error', 'error');
+            }
+
+            input.value = '';
+        }
+
+        async function deleteStock(symbol) {
+            if (!confirm(`Remove ${symbol} from watchlist?`)) return;
+
+            try {
+                const response = await fetch(`/api/stocks/${symbol}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    location.reload();
+                    showToast(`Removed ${symbol}`);
+                } else {
+                    const data = await response.json();
+                    showToast(data.error || 'Failed to remove symbol', 'error');
+                }
+            } catch (err) {
+                showToast('Network error', 'error');
+            }
+        }
+
+        // Category symbols CRUD
+        async function addCategorySymbol(e, category) {
+            e.preventDefault();
+            const input = document.getElementById(`input-${category}`);
+            const symbol = input.value.trim().toUpperCase();
+
+            if (!symbol) return;
+
+            try {
+                const response = await fetch(`/api/categories/${category}/symbols`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    location.reload();
+                    showToast(`Added ${symbol} to ${category}`);
+                } else {
+                    showToast(data.error || 'Failed to add symbol', 'error');
+                }
+            } catch (err) {
+                showToast('Network error', 'error');
+            }
+
+            input.value = '';
+        }
+
+        async function deleteCategorySymbol(category, symbol) {
+            if (!confirm(`Remove ${symbol} from ${category}?`)) return;
+
+            try {
+                const response = await fetch(`/api/categories/${category}/symbols/${symbol}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    location.reload();
+                    showToast(`Removed ${symbol}`);
+                } else {
+                    const data = await response.json();
+                    showToast(data.error || 'Failed to remove symbol', 'error');
+                }
+            } catch (err) {
+                showToast('Network error', 'error');
+            }
+        }
+
+        // Basket symbols CRUD
+        async function addBasketSymbol(e, category, basket) {
+            e.preventDefault();
+            const input = document.getElementById(`input-${category}-${basket}`);
+            const symbol = input.value.trim().toUpperCase();
+
+            if (!symbol) return;
+
+            try {
+                const response = await fetch(`/api/categories/${category}/baskets/${basket}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    location.reload();
+                    showToast(`Added ${symbol} to ${basket}`);
+                } else {
+                    showToast(data.error || 'Failed to add symbol', 'error');
+                }
+            } catch (err) {
+                showToast('Network error', 'error');
+            }
+
+            input.value = '';
+        }
+
+        async function deleteBasketSymbol(category, basket, symbol) {
+            if (!confirm(`Remove ${symbol} from ${basket}?`)) return;
+
+            try {
+                const response = await fetch(`/api/categories/${category}/baskets/${basket}/${symbol}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    location.reload();
+                    showToast(`Removed ${symbol}`);
+                } else {
+                    const data = await response.json();
+                    showToast(data.error || 'Failed to remove symbol', 'error');
+                }
+            } catch (err) {
+                showToast('Network error', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
