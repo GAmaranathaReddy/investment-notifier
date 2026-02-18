@@ -32,15 +32,33 @@ def send_telegram(
 
     Args:
         text: Message text
-        bot_token: Bot token (reads from env if not provided)
-        chat_id: Chat ID (reads from env if not provided)
+        bot_token: Bot token (reads from env/secrets if not provided)
+        chat_id: Chat ID (reads from env/secrets if not provided)
         parse_mode: Message parse mode (None for plain text, "Markdown" or "HTML")
 
     Returns:
         True if successful, False otherwise
     """
-    token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
+    # Try to get credentials from multiple sources
+    token = bot_token
+    chat = chat_id
+
+    if not token or not chat:
+        # Try st.secrets (Streamlit Cloud)
+        try:
+            import streamlit as st
+            if not token:
+                token = st.secrets.get("TELEGRAM_BOT_TOKEN")
+            if not chat:
+                chat = st.secrets.get("TELEGRAM_CHAT_ID")
+        except:
+            pass
+
+        # Fallback to environment variables
+        if not token:
+            token = os.environ.get("TELEGRAM_BOT_TOKEN")
+        if not chat:
+            chat = os.environ.get("TELEGRAM_CHAT_ID")
 
     if not token or not chat:
         logger.warning("Telegram credentials not configured. Skipping alert.")
