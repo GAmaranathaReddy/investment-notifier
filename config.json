@@ -36,6 +36,13 @@
     }
   },
 
+  "scheduler": {
+    "enabled": false,
+    "days": [0, 1, 2, 3, 4],
+    "times": ["09:30", "16:00"],
+    "timezone": "America/New_York"
+  },
+
   "categories": {
     "core_trend": {
       "description": "Broad market + major trend leaders. Used for trend following and safe exit alerts.",

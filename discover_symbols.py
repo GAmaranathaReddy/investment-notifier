@@ -92,6 +92,18 @@ def load_universe(config: dict) -> dict[str, list[str]]:
     for basket_name, basket_symbols in baskets.items():
         universe[f"emerging_{basket_name}"] = basket_symbols
 
+    # Load watchlist from stocks.json
+    stocks_file = Path(__file__).parent / "stocks.json"
+    if stocks_file.exists():
+        try:
+            with open(stocks_file, "r") as f:
+                watchlist = json.load(f)
+            if watchlist:
+                universe["watchlist"] = watchlist
+                logger.info(f"Loaded {len(watchlist)} symbols from stocks.json watchlist")
+        except Exception as e:
+            logger.warning(f"Could not load stocks.json: {e}")
+
     return universe
 
 
@@ -505,6 +517,98 @@ def run_discovery(
         if candidate:
             recommendations.append(candidate)
             logger.info(f"  ✓ {symbol}: {candidate['reason']}")
+
+    # Process watchlist symbols - ALWAYS include them
+    logger.info("Evaluating Watchlist (stocks.json)...")
+    existing_symbols = {r["symbol"] for r in recommendations}
+
+    for symbol in universe.get("watchlist", []):
+        # Skip if already in recommendations
+        if symbol in existing_symbols:
+            continue
+
+        df = all_data.get(symbol)
+        if df is None:
+            logger.warning(f"  ⚠ {symbol}: No data available")
+            continue
+
+        close = get_close_series(df)
+        high = get_high_series(df)
+
+        if close is None or len(close) < 20:
+            logger.warning(f"  ⚠ {symbol}: Insufficient data")
+            continue
+
+        # Get basic metrics for watchlist symbols
+        current_price = float(close.iloc[-1])
+
+        # Calculate basic metrics
+        dma_50 = get_ma_value(close, 50) or current_price
+        dma_100 = get_ma_value(close, 100) or current_price
+
+        # Get multi-timeframe highs
+        highs = get_multi_timeframe_highs(high)
+        drop_1d = compute_drawdown(current_price, highs["high_1d"]) * 100
+        drop_1w = compute_drawdown(current_price, highs["high_1w"]) * 100
+        drop_1m = compute_drawdown(current_price, highs["high_1m"]) * 100
+        drop_3m = compute_drawdown(current_price, highs["high_3m"]) * 100
+
+        # Calculate relative strength if benchmark available
+        rel_strength = 0.0
+        if benchmark_series is not None:
+            rel_strength = compute_relative_strength(close, benchmark_series, 21)
+
+        # Calculate slope
+        slope = compute_ma_slope(close, 50, 10)
+
+        # Calculate drawdown
+        recent_high = get_period_high(high, 63)
+        drawdown = compute_drawdown(current_price, recent_high) * 100
+
+        # Calculate a simple score
+        score = 0.5  # Base score
+        if current_price > dma_50:
+            score += 0.2
+        if slope > 0:
+            score += 0.1
+        if rel_strength > 0:
+            score += 0.1
+
+        # Determine status based on price vs MA
+        if current_price > dma_50 and slope > 0.005:
+            status = "momentum"
+            status_label = "🚀 MOMENTUM"
+        elif current_price > dma_50:
+            status = "watch"
+            status_label = "👀 WATCH"
+        else:
+            status = "below_ma"
+            status_label = "⚪ BELOW MA"
+
+        candidate = {
+            "symbol": symbol,
+            "category": "watchlist",
+            "price": current_price,
+            "dma_50": dma_50,
+            "dma_100": dma_100,
+            "high_1d": highs["high_1d"],
+            "high_1w": highs["high_1w"],
+            "high_1m": highs["high_1m"],
+            "high_3m": highs["high_3m"],
+            "drop_1d": drop_1d,
+            "drop_1w": drop_1w,
+            "drop_1m": drop_1m,
+            "drop_3m": drop_3m,
+            "relative_strength_pct": rel_strength * 100,
+            "drawdown_pct": drawdown,
+            "slope_pct": slope * 100,
+            "score": score,
+            "status": status,
+            "reason": f"{status_label}, Price ${current_price:.2f}, 50DMA ${dma_50:.2f}",
+        }
+
+        recommendations.append(candidate)
+        logger.info(f"  ✓ {symbol}: {candidate['reason']}")
 
     return recommendations
 
