@@ -53,8 +53,7 @@
     "core_trend": {
       "description": "Broad market + major trend leaders. Used for trend following and safe exit alerts.",
       "symbols": [
-        "SPY",
-        "QQQ"
+        "SPY"
       ],
       "rules": {
         "exit": {
