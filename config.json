@@ -54,8 +54,7 @@
       "description": "Broad market + major trend leaders. Used for trend following and safe exit alerts.",
       "symbols": [
         "SPY",
-        "QQQ",
-        "IWM"
+        "QQQ"
       ],
       "rules": {
         "exit": {
