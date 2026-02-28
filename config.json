@@ -17,7 +17,6 @@
       "state_dir": "state"
     }
   },
-
   "notifications": {
     "telegram": {
       "enabled": true,
@@ -35,25 +34,36 @@
       }
     }
   },
-
   "scheduler": {
     "enabled": false,
-    "days": [0, 1, 2, 3, 4],
-    "times": ["09:30", "16:00"],
+    "days": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "times": [
+      "09:30",
+      "16:00"
+    ],
     "timezone": "America/New_York"
   },
-
   "categories": {
     "core_trend": {
       "description": "Broad market + major trend leaders. Used for trend following and safe exit alerts.",
-      "symbols": ["SPY", "QQQ", "DIA", "IWM"],
+      "symbols": [
+        "SPY",
+        "QQQ",
+        "IWM"
+      ],
       "rules": {
         "exit": {
           "use_ma_crossover": true,
           "short_ma": 50,
           "long_ma": 100,
           "drawdown_lookback_days": 63,
-          "drawdown_exit_threshold": 0.10,
+          "drawdown_exit_threshold": 0.1,
           "price_below_long_ma_days": 3
         },
         "entry": {
@@ -74,16 +84,34 @@
         }
       }
     },
-
     "emerging_rotation": {
       "description": "Rotation-aware baskets to catch early cycles (metals, energy, agri, AI infra). Use scouts first, then expand.",
       "baskets": {
-        "commodities_broad": ["DBC", "PDBC"],
-        "precious_metals": ["GLD", "SLV", "PPLT"],
-        "industrial_metals": ["CPER", "DBB"],
-        "energy": ["USO", "UNG"],
-        "agriculture": ["DBA"],
-        "ai_infra": ["SMH", "SOXX", "XLK"]
+        "commodities_broad": [
+          "DBC",
+          "PDBC"
+        ],
+        "precious_metals": [
+          "GLD",
+          "SLV",
+          "PPLT"
+        ],
+        "industrial_metals": [
+          "CPER",
+          "DBB"
+        ],
+        "energy": [
+          "USO",
+          "UNG"
+        ],
+        "agriculture": [
+          "DBA"
+        ],
+        "ai_infra": [
+          "SMH",
+          "SOXX",
+          "XLK"
+        ]
       },
       "expand": {
         "enabled": true,
@@ -94,8 +122,13 @@
         },
         "expand_sources": {
           "miner_etfs": {
-            "precious_metals": ["GDX", "SIL"],
-            "industrial_metals": ["COPX"]
+            "precious_metals": [
+              "GDX",
+              "SIL"
+            ],
+            "industrial_metals": [
+              "COPX"
+            ]
           },
           "top_n_holdings_per_etf": 20
         }
@@ -128,16 +161,24 @@
         }
       }
     },
-
     "stress_opportunities": {
       "description": "High-quality, systemically important assets to buy during panic (not small regional banks).",
-      "symbols": ["JPM", "BAC", "DBSDF", "SBIN.NS"],
+      "symbols": [
+        "JPM",
+        "BAC",
+        "DBSDF",
+        "SBIN.NS"
+      ],
       "rules": {
         "opportunity": {
           "enabled": true,
           "requires_market_stress_confirmation": true,
           "market_stress_signals": {
-            "stress_watch_symbols": ["SPY", "VIXY", "KRE"],
+            "stress_watch_symbols": [
+              "SPY",
+              "VIXY",
+              "KRE"
+            ],
             "stress_if_vixy_trending_up": true,
             "stress_if_kre_below_long_ma": true,
             "stress_if_spy_drawdown_threshold": 0.08
@@ -157,10 +198,19 @@
         }
       }
     },
-
     "defensive_protection": {
       "description": "Capital protection instruments that tend to perform in risk-off regimes.",
-      "symbols": ["TLT", "IEF", "BND", "USMV", "SPLV", "SCHD", "VIG", "XLU", "GLD"],
+      "symbols": [
+        "TLT",
+        "IEF",
+        "BND",
+        "USMV",
+        "SPLV",
+        "SCHD",
+        "VIG",
+        "XLU",
+        "GLD"
+      ],
       "rules": {
         "entry": {
           "enabled": true,
@@ -172,17 +222,20 @@
         "exit": {
           "enabled": true,
           "drawdown_lookback_days": 63,
-          "drawdown_exit_threshold": 0.10,
+          "drawdown_exit_threshold": 0.1,
           "use_ma_crossover": true,
           "short_ma": 50,
           "long_ma": 100
         }
       }
     },
-
     "finance_confirmation": {
       "description": "Finance sector confirmation signals (macro health). Not for discovery expansion.",
-      "symbols": ["XLF", "KBE", "KRE"],
+      "symbols": [
+        "XLF",
+        "KBE",
+        "KRE"
+      ],
       "rules": {
         "alerts": {
           "enabled": true,
@@ -195,7 +248,6 @@
       }
     }
   },
-
   "global_filters": {
     "min_history_days": 120,
     "min_price": 5,
@@ -203,7 +255,6 @@
     "exclude_leveraged_etfs": true,
     "max_universe_size": 200
   },
-
   "schedules": {
     "monitoring": {
       "recommended_frequency": "daily_after_close"
