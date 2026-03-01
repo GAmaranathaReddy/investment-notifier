@@ -102,6 +102,21 @@
           "USO",
           "UNG"
         ],
+        "oil":[
+          "XOM",
+          "CVX",
+          "COP",
+          "FANG",
+          "OXY",
+          "EQT",
+          "SLB",
+          "HAL",
+          "PSX",
+          "VLO",
+          "BP",
+          "SHEL",
+          "TTE"
+        ],
         "agriculture": [
           "DBA"
         ],
